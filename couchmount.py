@@ -8,8 +8,9 @@
 # you should have received as part of this distribution.
 
 
-from couchdb import Database, Document, ResourceNotFound, Row, Server, \
-    ViewResults
+from couchdb import Database, Document, ResourceNotFound, Server
+from couchdb.client import Row, ViewResults
+from couchdb.http import ResponseBody
 import errno
 import fuse
 import os
@@ -66,6 +67,7 @@ class CouchFSDocument(fuse.Fuse):
         for r in '.', '..':
             yield fuse.Direntry(r)
         for name in self.get_dirs().get(path, []):
+            if not name: continue
             yield fuse.Direntry(name.encode('utf-8'))
 
     def getattr(self, path):
@@ -109,6 +111,12 @@ class CouchFSDocument(fuse.Fuse):
         path = _normalize_path(path)
         try:
             data = self.db.get_attachment(self.db[self.doc_id], path)
+            if data is None:
+                return -errno.ENOENT
+            elif isinstance(data, ResponseBody):
+                data = data.read()
+            else:
+                data = data.getvalue()
             slen = len(data)
             if offset < slen:
                 if offset + size > slen:
@@ -125,6 +133,12 @@ class CouchFSDocument(fuse.Fuse):
         path = _normalize_path(path)
         try:
             data = self.db.get_attachment(self.db[self.doc_id], path)
+            if data is None:
+                data = ''
+            elif isinstance(data, ResponseBody):
+                data = data.read()
+            else:
+                data = data.getvalue()
             data = data[0:offset] + buf + data[offset+len(buf):]
             self.db.put_attachment(self.db[self.doc_id], data, filename=path)
             return len(buf)
